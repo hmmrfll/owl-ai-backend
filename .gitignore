@@ -1,3 +1,4 @@
+.env
 # Node.js
 node_modules/
 npm-debug.log*
@@ -171,5 +172,7 @@ $RECYCLE.BIN/
 
 # Игнорировать все файлы в папке src/uploads/clubsImages
 /src/uploads/clubsImages/*
+
+.env
 
 
