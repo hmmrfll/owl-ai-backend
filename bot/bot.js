@@ -4,6 +4,7 @@ const createStartHandler = require('./handlers/startHandler');
 const createCallbackHandler = require('./handlers/callbackHandler');
 const createSubscriptionHandler = require('./handlers/subscriptionHandler/subscriptionHandler');
 const userService = require('../services/userService');
+const aiService = require('../services/aiService');
 
 const token = process.env.BOT_TOKEN;
 const url = process.env.WEBHOOK_URL;
@@ -126,6 +127,7 @@ async function startBot() {
         });
 
         // Обработка входящих фотографий
+        // Обработка входящих фотографий
         bot.on('photo', async (msg) => {
             const userId = msg.from.id;
             const chatId = msg.chat.id;
@@ -145,12 +147,32 @@ async function startBot() {
                 // Показываем, что бот обрабатывает фото
                 await bot.sendChatAction(chatId, 'typing');
 
-                // Здесь будет логика обработки фотографии...
-                // На данном этапе просто отвечаем, что фото получено
-                await bot.sendMessage(chatId, 'Фотография получена и будет обработана.');
+                // Получаем фото (берем самое большое разрешение)
+                const photoId = msg.photo[msg.photo.length - 1].file_id;
+                const fileLink = await bot.getFileLink(photoId);
+
+                // Отправляем сообщение о начале обработки
+                await bot.sendMessage(chatId, 'Анализирую изображение... Это может занять некоторое время.');
+
+                // Можно добавить описание из сообщения, если оно есть
+                const caption = msg.caption || '';
+
+                // Формируем промпт для AI
+                const prompt = `Перед вами фотография юридического документа или ситуации. 
+Вы - юридический помощник. Внимательно проанализируйте изображение и предоставьте юридическую оценку. 
+Если на изображении текст документа, расскажите о его правовом значении.
+Если это фотография ситуации, дайте правовую оценку с точки зрения российского законодательства.
+${caption ? 'Пользователь также добавил описание: ' + caption : ''}
+Ссылка на изображение: ${fileLink}`;
+
+                // Отправляем запрос к OpenAI через наш сервис
+                const aiResponse = await aiService.processRequest(prompt);
 
                 // Логируем использование ресурса
                 await userService.logResourceUsage(userId, 'photo');
+
+                // Отправляем результат анализа
+                await bot.sendMessage(chatId, aiResponse, { parse_mode: 'Markdown' });
 
                 // Если это была единственная доступная фотография для бесплатного пользователя,
                 // уведомляем об этом
@@ -169,6 +191,7 @@ async function startBot() {
             }
         });
 
+        // Обработка входящих документов
         // Обработка входящих документов
         bot.on('document', async (msg) => {
             const userId = msg.from.id;
@@ -189,12 +212,44 @@ async function startBot() {
                 // Показываем, что бот обрабатывает документ
                 await bot.sendChatAction(chatId, 'typing');
 
-                // Здесь будет логика обработки документа...
-                // На данном этапе просто отвечаем, что документ получен
-                await bot.sendMessage(chatId, 'Документ получен и будет обработан.');
+                // Получаем документ
+                const docId = msg.document.file_id;
+                const docName = msg.document.file_name || 'документ';
+                const fileLink = await bot.getFileLink(docId);
+
+                // Проверяем расширение файла
+                const fileExtension = docName.split('.').pop().toLowerCase();
+                const supportedExtensions = ['pdf', 'doc', 'docx', 'txt', 'rtf'];
+
+                if (!supportedExtensions.includes(fileExtension)) {
+                    return bot.sendMessage(
+                        chatId,
+                        `*Неподдерживаемый формат файла* ⚠️\n\nПоддерживаемые форматы: ${supportedExtensions.join(', ')}`,
+                        { parse_mode: 'Markdown' }
+                    );
+                }
+
+                // Отправляем сообщение о начале обработки
+                await bot.sendMessage(chatId, `Анализирую документ "${docName}"... Это может занять некоторое время.`);
+
+                // Можно добавить описание из сообщения, если оно есть
+                const caption = msg.caption || '';
+
+                // Формируем промпт для AI
+                const prompt = `Перед вами юридический документ "${docName}". 
+Вы - юридический помощник. Внимательно проанализируйте документ и предоставьте юридическую оценку. 
+Объясните правовое значение документа, выделите важные моменты и дайте рекомендации с точки зрения российского законодательства.
+${caption ? 'Пользователь также добавил описание: ' + caption : ''}
+Ссылка на документ: ${fileLink}`;
+
+                // Отправляем запрос к OpenAI через наш сервис
+                const aiResponse = await aiService.processRequest(prompt);
 
                 // Логируем использование ресурса
                 await userService.logResourceUsage(userId, 'document');
+
+                // Отправляем результат анализа
+                await bot.sendMessage(chatId, aiResponse, { parse_mode: 'Markdown' });
 
                 // Если это был единственный доступный документ для бесплатного пользователя,
                 // уведомляем об этом
@@ -277,16 +332,18 @@ async function startBot() {
                 // Показываем, что бот печатает
                 await bot.sendChatAction(chatId, 'typing');
 
-                // Здесь будет интеграция с AI для обработки запроса
-                // Пока просто отправляем имитацию ответа
-                const aiResponse = `Ваш запрос "${msg.text}" получен и будет обработан AI. Эта функция будет доступна в скором времени.`;
+                // Формируем промпт для AI, добавляя юридический контекст
+                const userInput = msg.text;
+                const prompt = `Вы - юридический помощник для пользователей из России. Отвечайте на вопросы кратко и по существу, основываясь на российском законодательстве. Если нужно уточнение или вопрос недостаточно ясен, попросите предоставить дополнительную информацию. Вопрос: ${userInput}`;
 
-                // Логируем использование ресурса (только если ресурс ограничен)
-                // Для бесплатного тарифа AI запросы не ограничены, но мы всё равно логируем их для статистики
+                // Отправляем запрос к OpenAI через наш сервис
+                const aiResponse = await aiService.processRequest(prompt);
+
+                // Логируем использование ресурса
                 await userService.logResourceUsage(userId, 'ai_request');
 
-                // Отправляем ответ
-                await bot.sendMessage(chatId, aiResponse);
+                // Отправляем ответ с использованием Markdown форматирования
+                await bot.sendMessage(chatId, aiResponse, { parse_mode: 'Markdown' });
 
             } catch (error) {
                 console.error('Ошибка при обработке AI запроса:', error);
