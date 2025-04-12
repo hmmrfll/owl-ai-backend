@@ -3,5 +3,5 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-EXPOSE 8034
-CMD /bin/sh -c "npm run init-db && npm start"
+EXPOSE 3000
+CMD /bin/sh -c "npm start"

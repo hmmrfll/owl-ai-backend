@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # База данных PostgreSQL
+  db:
+    image: postgres:14-alpine
+    container_name: owlai_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-owlaiuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-owlaipassword}
+      POSTGRES_DB: ${DB_NAME:-owlaidb}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - owlai_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-owlaiuser} -d ${DB_NAME:-owlaidb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Telegram бот
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owlai_bot
+    restart: always
+    environment:
+      # Telegram бот
+      BOT_TOKEN: ${BOT_TOKEN}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      PORT: ${PORT:-8034}
+      PAYMENT_PROVIDER_TOKEN: ${PAYMENT_PROVIDER_TOKEN}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+
+      # База данных
+      DB_USER: ${DB_USER:-owlaiuser}
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-owlaidb}
+      DB_PASSWORD: ${DB_PASSWORD:-owlaipassword}
+      DB_PORT: 5432
+
+      # Crypto Pay API
+      CRYPTO_PAY_API_TOKEN: ${CRYPTO_PAY_API_TOKEN}
+      CRYPTO_PAY_API_URL: ${CRYPTO_PAY_API_URL}
+
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - owlai_network
+
+volumes:
+  postgres_data:
+
+networks:
+  owlai_network:
+    driver: bridge
