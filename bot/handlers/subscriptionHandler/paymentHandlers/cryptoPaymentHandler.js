@@ -1,6 +1,8 @@
 // bot/handlers/subscriptionHandler/paymentHandlers/cryptoPaymentHandler.js
 const BasePaymentHandler = require('./basePaymentHandler');
 const cryptoPayService = require('../../../../services/cryptoPayService');
+const userService = require('../../../../services/userService');
+
 
 class CryptoPaymentHandler extends BasePaymentHandler {
     constructor(bot) {
@@ -149,8 +151,13 @@ ID счета: ${invoice.invoice_id}
                 const tariffName = payload.tariff || 'выбранный';
                 const tariffDisplayName = tariffName.charAt(0).toUpperCase() + tariffName.slice(1);
 
-                // Здесь должна быть логика активации подписки в БД
-                // ...
+                // Активируем подписку в базе данных
+                const userId = payload.user_id || query.from.id;
+                await userService.activateSubscription(userId, tariffName, {
+                    payment_id: invoice.invoice_id.toString(),
+                    payment_method: 'crypto',
+                    payment_amount: parseFloat(invoice.amount)
+                });
 
                 const successMessage = `
 *Оплата успешно получена!* ✅
